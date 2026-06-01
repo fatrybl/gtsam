@@ -21,6 +21,7 @@
 #pragma once
 
 #include <gtsam/nonlinear/FixedLagSmoother.h>
+#include <gtsam/nonlinear/FixableFactor.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <queue>
 
@@ -91,6 +92,18 @@ public:
     return parameters_;
   }
 
+  /** Enable/disable fixing (conditioning) poses in FixableFactor factors (e.g.
+   * SmartProjectionPoseFactor) when they are marginalized, instead of letting
+   * them collapse into a frozen linear marginal. Enabled by default; only
+   * affects factors implementing the FixableFactor interface. See
+   * doc/SmartFactorFixPose.md. */
+  void setFixSmartFactorsOnMarginalize(bool enable) {
+    fixSmartFactorsOnMarginalize_ = enable;
+  }
+  bool getFixSmartFactorsOnMarginalize() const {
+    return fixSmartFactorsOnMarginalize_;
+  }
+
   /** Access the current set of factors */
   const NonlinearFactorGraph& getFactors() const {
     return factors_;
@@ -139,6 +152,10 @@ protected:
    * smoothing window. This idea is from ??? TODO: Look up paper reference **/
   bool enforceConsistency_;
 
+  /** Whether to fix (condition) poses of FixableFactor factors at marginalization
+   * time rather than freezing them into linear marginals. **/
+  bool fixSmartFactorsOnMarginalize_ = true;
+
   /** The nonlinear factors **/
   NonlinearFactorGraph factors_;
 
@@ -177,6 +194,19 @@ protected:
 
   /** Marginalize out selected variables */
   void marginalize(const KeyVector& marginalizableKeys);
+
+  /** For every FixableFactor that touches a marginalized key but also a
+   * surviving key, replace it in-place with a version that fixes (conditions)
+   * the marginalized keys at their current estimate in theta_. Factors all of
+   * whose keys are marginalized are left untouched (standard marginalization
+   * removes them). */
+  void fixMarginalizedSmartFactors(const KeyVector& marginalizeKeys);
+
+  /** Replace the factor at the given slot, keeping factorIndex_ consistent. If
+   * newFactor is null, the slot is removed and recycled. */
+  void replaceFactor(size_t slot,
+                     const NonlinearFactor::shared_ptr& oldFactor,
+                     const NonlinearFactor::shared_ptr& newFactor);
 
 private:
   /** Private methods for printing debug information */

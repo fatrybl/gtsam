@@ -196,11 +196,47 @@ information block.
 | `selectLiveBlocks` ($H_{\text{full}}\!\to\!H_{\text{red}}$) | `SmartProjectionPoseFactor::SelectLiveBlocks` |
 | $\phi_{\text{fix}}$ linear factor | `SmartProjectionPoseFactor::createHessianFactorFixed` |
 
-## 5. What this enables (next steps)
+## 5. Smoother integration
 
-With `fixPose` available, a fixed-lag smoother can, instead of deleting every
-smart factor that touches an out-of-window pose (which discards the landmark
-information in the surviving views), call `newFactor = oldFactor.fixPose(x, x̂)`
-for each aging pose and let the global marginalization remove the pose once.
-That integration (the "PR 2" in the discussion) is deliberately *not* part of
-this change.
+A fixed-lag smoother uses `fixPose` instead of deleting every smart factor that
+touches an out-of-window pose (which discards the landmark information of the
+surviving views) or freezing it into a linear marginal (which loses
+re-triangulation). For each retiring pose `x` it calls
+`newFactor = oldFactor.fixPose(x, x̂)` and lets the *global* marginalization
+remove `x` once, via the rest of the graph.
+
+To keep the smoother independent of any SLAM type, the capability is exposed
+through a small interface, `gtsam::FixableFactor`, with a single method
+
+```cpp
+NonlinearFactor::shared_ptr fixKeys(const KeyVector& keysToFix,
+                                    const Values& values) const;
+```
+
+`SmartProjectionPoseFactor` implements it by chaining `fixPose` over the keys it
+shares with `keysToFix` (returning `nullptr` if no live key remains).
+
+### `BatchFixedLagSmoother`
+
+Before its standard marginalization, `BatchFixedLagSmoother::marginalize`
+runs a pass (`fixMarginalizedSmartFactors`) that, for every `FixableFactor`
+which touches both a marginalized key and a surviving key, replaces it in place
+with `fixKeys(marginalizeKeys, theta_)`. The retiring poses are anchored at
+their current estimate $\hat x$, the factor stops depending on them, and the
+remaining (odometry/IMU/prior) factors marginalize the pose globally. The
+behavior can be toggled with `setFixSmartFactorsOnMarginalize(bool)` (default
+on; only affects `FixableFactor` instances).
+
+This is exactly the workflow Dellaert sketched:
+`newFactor <- oldFactor.fixPose(pose)` followed by a single global
+marginalization. Because the pose is *conditioned* (not marginalized) inside the
+factor, the same pose can be shared across many smart factors without
+double-counting.
+
+### `IncrementalFixedLagSmoother` (future)
+
+The iSAM2-based smoother needs the same `fixKeys` replacement to happen as a
+factor add/remove (`ISAM2::update` with `factorsToRemove` + new factors) just
+before `marginalizeLeaves`, taking the anchor values from the current
+linearization point. The `FixableFactor` interface already in place is the hook
+for that follow-up; it is intentionally not part of this change.

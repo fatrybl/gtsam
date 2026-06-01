@@ -20,6 +20,7 @@
 #pragma once
 
 #include <gtsam/slam/SmartProjectionFactor.h>
+#include <gtsam/nonlinear/FixableFactor.h>
 
 namespace gtsam {
 /**
@@ -43,7 +44,8 @@ namespace gtsam {
  */
 template <class CALIBRATION>
 class SmartProjectionPoseFactor
-    : public SmartProjectionFactor<PinholePose<CALIBRATION> > {
+    : public SmartProjectionFactor<PinholePose<CALIBRATION> >,
+      public FixableFactor {
  private:
   typedef PinholePose<CALIBRATION> Camera;
   typedef SmartProjectionFactor<Camera> Base;
@@ -237,6 +239,28 @@ public:
     // Invalidate the cached triangulation (camera count changed).
     result->cameraPosesTriangulation_.clear();
     return result;
+  }
+
+  /**
+   * FixableFactor interface: fix every key of this factor that also appears in
+   * `keysToFix` at its value in `values`. Returns the reduced factor, or
+   * nullptr if no live key remains (the factor would reduce to a constant).
+   */
+  NonlinearFactor::shared_ptr fixKeys(const KeyVector& keysToFix,
+                                      const Values& values) const override {
+    const KeySet toFix(keysToFix.begin(), keysToFix.end());
+    shared_ptr current;
+    bool anyFixed = false;
+    for (const Key k : this->keys_) {
+      if (!toFix.exists(k)) continue;
+      const Pose3& world_P_body = values.at<Pose3>(k);
+      current = anyFixed ? current->fixPose(k, world_P_body)
+                         : this->fixPose(k, world_P_body);
+      anyFixed = true;
+    }
+    if (!anyFixed) return std::make_shared<This>(*this);  // nothing to fix
+    if (current->keys().empty()) return nullptr;          // fully fixed: drop
+    return current;
   }
 
   /// @}
