@@ -181,8 +181,8 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
 void IncrementalFixedLagSmoother::prepareFixedSmartFactors(
     const KeyVector& marginalizableKeys, FactorIndices* factorsToRemove,
     NonlinearFactorGraph* fixedFactors) const {
-  const std::unordered_set<Key> marginalized(marginalizableKeys.begin(),
-                                             marginalizableKeys.end());
+  const KeySet marginalized(marginalizableKeys.begin(),
+                            marginalizableKeys.end());
   // Anchor poses at the current linearization point, which is also what the
   // marginalization linearizes about (a first-estimate-like choice).
   const Values& linearizationPoint = isam_.getLinearizationPoint();
@@ -198,7 +198,7 @@ void IncrementalFixedLagSmoother::prepareFixedSmartFactors(
     // Act only on factors touching both a marginalized and a surviving key.
     bool touchesMarginalized = false, touchesSurviving = false;
     for (const Key key : factor->keys()) {
-      if (marginalized.count(key))
+      if (marginalized.exists(key))
         touchesMarginalized = true;
       else
         touchesSurviving = true;

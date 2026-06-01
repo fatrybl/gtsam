@@ -139,16 +139,78 @@ PR). Each smart factor only needs to drop its dependence on $x_1$ while
 preserving the contribution of $z_1$ — exactly the conditioning above. Doing a
 local marginalization inside every factor would double-count $x_1$'s prior.
 
-### Re-triangulation and First-Estimate Jacobians (FEJ)
+### Re-triangulation
 
 Because $\phi_{\text{fix}}$ stays nonlinear, on every relinearization the
 landmark is re-triangulated from the anchored + live cameras and
 $G_{LL}, g_L, f$ are recomputed at the current live estimate while the anchored
-camera stays at $\hat x_1$. Optionally, to avoid the spurious information gain
-caused by relinearizing about a moving estimate (an observability/consistency
-issue in sliding-window estimators), the live Jacobians can also be evaluated at
-their first estimates (FEJ). FEJ is orthogonal to the mechanism here and is left
-as future work; see Chen et al., *"FEJ2"*, IROS 2023.
+camera stays at $\hat x_1$. This is the property that distinguishes `fixPose`
+from freezing the factor into a linear marginal, and it is the dominant accuracy
+benefit: the surviving views keep contributing a *live* constraint instead of a
+stale linearization.
+
+### First-Estimate Jacobians (FEJ) — not implemented
+
+> **Status: documented for context only. FEJ is *not* implemented and the code
+> always linearizes the live poses at their current estimate.** When/if added it
+> would be a separate, opt-in, default-off option (see "Accuracy and stability"
+> below).
+
+**What it is.** In a sliding-window estimator a variable $x_i$ is re-linearized
+repeatedly as its estimate $\bar x_i$ drifts, and marginalization then bakes
+those linearizations into a permanent prior. Systems with **unobservable
+directions** (monocular scale/gauge; VIO global position + yaw) require, along
+such a direction $n$, that the stacked Jacobian satisfy $J(\bar x)\,n(\bar x)=0$.
+The nullspace $n$ depends on the linearization point, so if different factors
+linearize the *same* $x_i$ at *different* points $\bar x_i$, they share no common
+nullspace and the information matrix $\Lambda=\sum_k J_k^\top\Sigma_k^{-1}J_k$
+gains rank in directions that should be unobservable — *spurious information*,
+i.e. over-confidence and bias.
+
+FEJ fixes this by evaluating **every Jacobian** w.r.t. a variable at one fixed
+point — the variable's **first** estimate $\bar x_i^{(0)}$ — for the variable's
+whole life, while still evaluating the **residual** $b_k=-r_k(\bar x_{\text{cur}})$
+at the current estimate:
+
+$$
+r_k(\bar x_{\text{cur}}+\delta)\;\approx\; r_k(\bar x_{\text{cur}})\;+\;J_k\big|_{\bar x^{(0)}}\,\delta .
+$$
+
+Applied to our smart factor: the pose Jacobians $F_i$ and the point Jacobian
+$E_i$ (and the triangulated $\bar\ell$) would use the first estimates
+$\bar x_i^{(0)}$, while $b_i = z_i - h(\bar x_i^{\text{cur}},\bar\ell^{\text{cur}})$
+stays at the current estimate. Note the **anchored** pose is already a
+first-estimate quantity — it is frozen at $\hat x_1$ by construction — so FEJ is
+just the extension of the same idea to the still-live poses, which keeps the
+linearization consistent across the marginalization seam.
+
+**Benefits.**
+- Preserves the unobservable subspace ⇒ no spurious information gain ⇒
+  **consistent** (not over-confident) covariance.
+- Over long, low-observability trajectories this also improves **accuracy**, by
+  removing the dominant systematic error of sliding-window VIO.
+- Makes the frozen anchored block and the moving live blocks share one
+  nullspace, so the marginalization seam stays consistent.
+
+**Drawbacks.**
+- The Jacobian is **stale** (evaluated at $\bar x^{(0)}$, not $\bar x_{\text{cur}}$),
+  a worse local approximation; in well-observed, well-initialized, low-drift
+  problems this can *reduce* accuracy versus plain relinearization.
+- It **fights iSAM2's design**, whose accuracy relies on selective
+  relinearization (the wildfire threshold). Pinning Jacobians undercuts that.
+- It is only **partially effective** if applied inside the smart factor alone:
+  true consistency needs *every* factor sharing those poses (odometry, IMU,
+  priors) to use FEJ as well — it is really a smoother-wide policy.
+- Requires storing and managing per-variable first estimates.
+
+**Accuracy and stability (summary).** The ordering of impact is
+`fixPose` (keep the factor nonlinear / re-triangulate) $\gg$ anchoring the
+retiring pose at exactly the smoother's marginalization linearization point
+$\gg$ FEJ. The first two are what make the result accurate and stable in the
+common case and are always on; FEJ is insurance against long-horizon
+over-confidence in the presence of unobservable directions, worth having as a
+default-off switch but not as the default. See Huang–Mourikis–Roumeliotis
+(OC-EKF) and Chen et al., *"FEJ2"*, IROS 2023.
 
 ## 3. Algorithm
 
@@ -233,10 +295,20 @@ marginalization. Because the pose is *conditioned* (not marginalized) inside the
 factor, the same pose can be shared across many smart factors without
 double-counting.
 
-### `IncrementalFixedLagSmoother` (future)
+### `IncrementalFixedLagSmoother`
 
-The iSAM2-based smoother needs the same `fixKeys` replacement to happen as a
-factor add/remove (`ISAM2::update` with `factorsToRemove` + new factors) just
-before `marginalizeLeaves`, taking the anchor values from the current
-linearization point. The `FixableFactor` interface already in place is the hook
-for that follow-up; it is intentionally not part of this change.
+The iSAM2-based smoother performs the same `fixKeys` replacement, but as a
+factor add/remove inside the existing `ISAM2::update` call that precedes
+`marginalizeLeaves`. `prepareFixedSmartFactors` scans the factors already in
+iSAM2, and for every `FixableFactor` touching both a marginalizable key and a
+surviving key it builds `fixKeys(marginalizableKeys, isam_.getLinearizationPoint())`,
+appends it to the factors being added and the old factor's index to the factors
+being removed. Anchoring at `isam_.getLinearizationPoint()` is deliberate: it is
+exactly the point iSAM2 marginalizes about, so the factor's frozen pose and the
+global marginal agree (a consistency requirement — see "Accuracy and stability"
+above). The same `setFixSmartFactorsOnMarginalize(bool)` toggle applies (default
+on).
+
+Because the replacement smart factor no longer depends on the marginalizable
+keys, it is untouched by the subsequent `marginalizeLeaves` and survives as a
+smaller, still-nonlinear factor.
