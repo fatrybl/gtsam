@@ -290,6 +290,13 @@ virtual class SmartProjectionPoseFactor : gtsam::NonlinearFactor {
 
   void add(const gtsam::Point2& measured_i, gtsam::Key poseKey_i);
 
+  // Fixing (anchoring) poses - see doc/SmartFactorFixPose.md
+  This* fixPose(gtsam::Key key, const gtsam::Pose3& world_P_body) const;
+  gtsam::NonlinearFactor* fixKeys(const gtsam::KeyVector& keysToFix,
+                                  const gtsam::Values& values) const;
+  bool hasFixedPoses() const;
+  gtsam::KeyVector fixedKeys() const;
+
   // enabling serialization functionality
   void serialize() const;
 

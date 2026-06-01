@@ -994,6 +994,9 @@ virtual class BatchFixedLagSmoother : gtsam::FixedLagSmoother {
 
   gtsam::LevenbergMarquardtParams params() const;
 
+  void setFixSmartFactorsOnMarginalize(bool enable);
+  bool getFixSmartFactorsOnMarginalize() const;
+
   gtsam::NonlinearFactorGraph getFactors() const;
 
   template <VALUE = {gtsam::Point2, gtsam::Rot2, gtsam::Pose2, gtsam::Point3,
@@ -1014,6 +1017,9 @@ virtual class IncrementalFixedLagSmoother : gtsam::FixedLagSmoother {
 
   gtsam::Matrix marginalCovariance(gtsam::Key key) const;
   gtsam::ISAM2Params params() const;
+
+  void setFixSmartFactorsOnMarginalize(bool enable);
+  bool getFixSmartFactorsOnMarginalize() const;
 
   gtsam::NonlinearFactorGraph getFactors() const;
   gtsam::ISAM2 getISAM2() const;
