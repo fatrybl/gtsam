@@ -78,6 +78,18 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     std::cout << std::endl;
   }
 
+  // Before marginalizing, give FixableFactor factors (e.g.
+  // SmartProjectionPoseFactor) already in iSAM2 a chance to fix the retiring
+  // poses at their current estimate, so the surviving views are not lost when
+  // the pose is marginalized. We do this as a remove+add inside the iSAM2
+  // update below. See doc/SmartFactorFixPose.md.
+  NonlinearFactorGraph factorsToAdd(newFactors);
+  FactorIndices allFactorsToRemove(factorsToRemove);
+  if (fixSmartFactorsOnMarginalize_ && !marginalizableKeys.empty()) {
+    prepareFixedSmartFactors(marginalizableKeys, &allFactorsToRemove,
+                             &factorsToAdd);
+  }
+
   // Force iSAM2 to put the marginalizable variables at the beginning
   createOrderingConstraints(marginalizableKeys, constrainedKeys);
 
@@ -99,8 +111,8 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
   KeyList additionalMarkedKeys(additionalKeys.begin(), additionalKeys.end());
 
   // Update iSAM2
-  isamResult_ = isam_.update(newFactors, newTheta,
-      factorsToRemove, constrainedKeys, {}, additionalMarkedKeys);
+  isamResult_ = isam_.update(factorsToAdd, newTheta,
+      allFactorsToRemove, constrainedKeys, {}, additionalMarkedKeys);
 
   if (debug) {
     std::cout << "Unused Keys After Update: ";
@@ -163,6 +175,41 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     std::cout << "IncrementalFixedLagSmoother::update() Finish" << std::endl;
 
   return result;
+}
+
+/* ************************************************************************* */
+void IncrementalFixedLagSmoother::prepareFixedSmartFactors(
+    const KeyVector& marginalizableKeys, FactorIndices* factorsToRemove,
+    NonlinearFactorGraph* fixedFactors) const {
+  const std::unordered_set<Key> marginalized(marginalizableKeys.begin(),
+                                             marginalizableKeys.end());
+  // Anchor poses at the current linearization point, which is also what the
+  // marginalization linearizes about (a first-estimate-like choice).
+  const Values& linearizationPoint = isam_.getLinearizationPoint();
+  const NonlinearFactorGraph& factors = isam_.getFactorsUnsafe();
+
+  for (size_t i = 0; i < factors.size(); ++i) {
+    const NonlinearFactor::shared_ptr& factor = factors[i];
+    if (!factor) continue;  // findUnusedFactorSlots may leave holes
+
+    const auto fixable = std::dynamic_pointer_cast<FixableFactor>(factor);
+    if (!fixable) continue;
+
+    // Act only on factors touching both a marginalized and a surviving key.
+    bool touchesMarginalized = false, touchesSurviving = false;
+    for (const Key key : factor->keys()) {
+      if (marginalized.count(key))
+        touchesMarginalized = true;
+      else
+        touchesSurviving = true;
+    }
+    if (!touchesMarginalized || !touchesSurviving) continue;
+
+    const NonlinearFactor::shared_ptr fixedFactor =
+        fixable->fixKeys(marginalizableKeys, linearizationPoint);
+    if (fixedFactor) fixedFactors->push_back(fixedFactor);
+    factorsToRemove->push_back(i);
+  }
 }
 
 /* ************************************************************************* */
