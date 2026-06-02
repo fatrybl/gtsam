@@ -314,10 +314,8 @@ void BatchFixedLagSmoother::marginalize(const KeyVector& marginalizeKeys) {
   // from the result of a partial elimination. This function removes the marginalized factors and
   // adds the linearized factors back in.
 
-  // First, give FixableFactor factors (e.g. SmartProjectionPoseFactor) a chance
-  // to fix the retiring poses at their current estimate, so that the surviving
-  // views are not lost when the factor is removed below. See
-  // doc/SmartFactorFixPose.md.
+  // Fix retiring poses in FixableFactor factors before they are removed below,
+  // so the surviving views are not lost. See doc/SmartFactorFixPose.md.
   if (fixSmartFactorsOnMarginalize_) {
     fixMarginalizedSmartFactors(marginalizeKeys);
   }
@@ -375,13 +373,11 @@ void BatchFixedLagSmoother::fixMarginalizedSmartFactors(
     const NonlinearFactor::shared_ptr factor = factors_.at(slot);
     if (!factor) continue;
 
-    // Only act on factors that implement the FixableFactor interface.
     const auto fixable = std::dynamic_pointer_cast<FixableFactor>(factor);
     if (!fixable) continue;
 
-    // Determine whether the factor touches both a marginalized and a surviving
-    // key. If it touches no surviving key, leave it for standard marginalization
-    // (it contributes only a constant to the remaining variables).
+    // Act only on factors straddling the boundary; factors entirely on
+    // marginalized keys are left to standard marginalization.
     bool touchesMarginalized = false, touchesSurviving = false;
     for (const Key key : factor->keys()) {
       if (marginalized.exists(key))
@@ -391,10 +387,7 @@ void BatchFixedLagSmoother::fixMarginalizedSmartFactors(
     }
     if (!touchesMarginalized || !touchesSurviving) continue;
 
-    // Fix the marginalized poses at their current estimate.
-    const NonlinearFactor::shared_ptr fixedFactor =
-        fixable->fixKeys(marginalizeKeys, theta_);
-    replaceFactor(slot, factor, fixedFactor);
+    replaceFactor(slot, factor, fixable->fixKeys(marginalizeKeys, theta_));
   }
 }
 
@@ -402,7 +395,6 @@ void BatchFixedLagSmoother::fixMarginalizedSmartFactors(
 void BatchFixedLagSmoother::replaceFactor(
     size_t slot, const NonlinearFactor::shared_ptr& oldFactor,
     const NonlinearFactor::shared_ptr& newFactor) {
-  // Drop the old key -> slot references.
   for (const Key key : oldFactor->keys()) {
     factorIndex_[key].erase(slot);
   }
@@ -411,8 +403,7 @@ void BatchFixedLagSmoother::replaceFactor(
     for (const Key key : newFactor->keys()) {
       factorIndex_[key].insert(slot);
     }
-  } else {
-    // No surviving keys: remove the factor and recycle its slot.
+  } else {  // no surviving keys: drop the factor and recycle its slot
     factors_.remove(slot);
     availableSlots_.push(slot);
   }

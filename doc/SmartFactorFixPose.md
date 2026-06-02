@@ -1,12 +1,10 @@
 # Fixing poses in smart projection factors (`fixPose`)
 
-This note describes the mathematics behind the `fixPose` capability added to
-`SmartProjectionPoseFactor`. It corresponds to **PR "B"** in the design sketched
-by F. Dellaert in the GTSAM discussion on using smart factors with fixed-lag
-smoothers: *"making a '1 pose smaller' factor, which has a baked-in pose along
-with its Jacobian."* It is intentionally self-contained and testable in
-isolation; wiring it into the `IncrementalFixedLagSmoother`/`BatchFixedLagSmoother`
-marginalization loop is a separate, later step.
+This note describes the mathematics behind the `fixPose` capability of
+`SmartProjectionPoseFactor` and its use by the fixed-lag smoothers. It follows
+the design sketched by F. Dellaert in the GTSAM discussion on using smart
+factors with fixed-lag smoothers: *"making a '1 pose smaller' factor, which has
+a baked-in pose along with its Jacobian."*
 
 ## 1. Background: the smart projection factor
 
@@ -134,10 +132,10 @@ We **condition** $x_1$ (fix it at a value), we do not **marginalize** it
 > be connected to many smart factors."* — F. Dellaert
 
 The pose is typically shared by odometry, IMU, and other smart factors. A single
-global marginalization of $x_1$ is performed once by the smoother (the later
-PR). Each smart factor only needs to drop its dependence on $x_1$ while
-preserving the contribution of $z_1$ — exactly the conditioning above. Doing a
-local marginalization inside every factor would double-count $x_1$'s prior.
+global marginalization of $x_1$ is performed once by the smoother; each smart
+factor only needs to drop its dependence on $x_1$ while preserving the
+contribution of $z_1$ — exactly the conditioning above. Doing a local
+marginalization inside every factor would double-count $x_1$'s prior.
 
 ### Re-triangulation
 
@@ -151,10 +149,9 @@ stale linearization.
 
 ### First-Estimate Jacobians (FEJ) — not implemented
 
-> **Status: documented for context only. FEJ is *not* implemented and the code
-> always linearizes the live poses at their current estimate.** When/if added it
-> would be a separate, opt-in, default-off option (see "Accuracy and stability"
-> below).
+> FEJ is **not implemented**: the code always linearizes the live poses at their
+> current estimate. It is documented here for context, and would be a separate,
+> default-off option if added.
 
 **What it is.** In a sliding-window estimator a variable $x_i$ is re-linearized
 repeatedly as its estimate $\bar x_i$ drifts, and marginalization then bakes

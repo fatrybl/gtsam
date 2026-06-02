@@ -92,11 +92,9 @@ public:
     return parameters_;
   }
 
-  /** Enable/disable fixing (conditioning) poses in FixableFactor factors (e.g.
-   * SmartProjectionPoseFactor) when they are marginalized, instead of letting
-   * them collapse into a frozen linear marginal. Enabled by default; only
-   * affects factors implementing the FixableFactor interface. See
-   * doc/SmartFactorFixPose.md. */
+  /** Fix (condition) poses of FixableFactor factors at marginalization instead
+   * of freezing them into linear marginals. Default on; only affects
+   * FixableFactor instances. See doc/SmartFactorFixPose.md. */
   void setFixSmartFactorsOnMarginalize(bool enable) {
     fixSmartFactorsOnMarginalize_ = enable;
   }
@@ -195,15 +193,12 @@ protected:
   /** Marginalize out selected variables */
   void marginalize(const KeyVector& marginalizableKeys);
 
-  /** For every FixableFactor that touches a marginalized key but also a
-   * surviving key, replace it in-place with a version that fixes (conditions)
-   * the marginalized keys at their current estimate in theta_. Factors all of
-   * whose keys are marginalized are left untouched (standard marginalization
-   * removes them). */
+  /** Replace every FixableFactor straddling the marginalization boundary with
+   * one that fixes the marginalized keys at their estimate in theta_. */
   void fixMarginalizedSmartFactors(const KeyVector& marginalizeKeys);
 
-  /** Replace the factor at the given slot, keeping factorIndex_ consistent. If
-   * newFactor is null, the slot is removed and recycled. */
+  /** Replace the factor at the given slot, keeping factorIndex_ consistent;
+   * a null newFactor removes and recycles the slot. */
   void replaceFactor(size_t slot,
                      const NonlinearFactor::shared_ptr& oldFactor,
                      const NonlinearFactor::shared_ptr& newFactor);

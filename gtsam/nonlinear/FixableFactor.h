@@ -28,35 +28,26 @@ namespace gtsam {
 /**
  * Mixin interface for factors that can "fix" (condition) some of their
  * variables at given values, baking the fixed variables' contribution into a
- * new factor over the remaining (live) variables.
+ * new factor over the remaining (live) variables. The canonical implementer is
+ * SmartProjectionPoseFactor (see doc/SmartFactorFixPose.md); a fixed-lag
+ * smoother uses it to retire an out-of-window pose from a smart factor while
+ * keeping the landmark information of the surviving views.
  *
- * The canonical implementer is SmartProjectionPoseFactor (see
- * doc/SmartFactorFixPose.md). A fixed-lag smoother uses this to retire an
- * out-of-window pose from a smart factor without discarding the landmark
- * information contributed by the surviving views: rather than deleting the
- * factor (losing the surviving views) or marginalizing it into a frozen linear
- * factor (losing re-triangulation), it fixes the retiring pose at its current
- * estimate and keeps a smaller, still-nonlinear factor.
- *
- * The interface is deliberately independent of the concrete value type so that
- * the smoother (in gtsam/nonlinear) does not depend on any SLAM type: values
- * are passed through a Values container.
+ * The interface is independent of the concrete value type (values pass through
+ * a Values container) so the smoother does not depend on any SLAM type.
  */
 class FixableFactor {
  public:
   virtual ~FixableFactor() = default;
 
   /**
-   * Return a copy of this factor with every key of this factor that also
-   * appears in @p keysToFix conditioned at its value in @p values. The result
-   * depends only on the remaining (live) keys.
+   * Return a copy of this factor with every key it shares with @p keysToFix
+   * conditioned at its value in @p values; the result depends only on the
+   * remaining (live) keys.
    *
-   * @param keysToFix the keys to fix (only those that this factor uses are
-   *        acted upon; others are ignored)
-   * @param values    must contain a value for every key of this factor that is
-   *        being fixed
-   * @return a new factor over the surviving keys, or nullptr if no live key
-   *         remains (the factor then reduces to a constant and can be dropped)
+   * @param keysToFix keys to fix (only those used by this factor act)
+   * @param values    must hold a value for each fixed key
+   * @return a factor over the surviving keys, or nullptr if none remain
    */
   virtual NonlinearFactor::shared_ptr fixKeys(const KeyVector& keysToFix,
                                               const Values& values) const = 0;

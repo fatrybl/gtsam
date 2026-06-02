@@ -118,11 +118,9 @@ public:
   /// Get the iSAM2 object which is used for the inference internally
   const ISAM2& getISAM2() const { return isam_; }
 
-  /** Enable/disable fixing (conditioning) poses in FixableFactor factors (e.g.
-   * SmartProjectionPoseFactor) when they are marginalized, instead of letting
-   * the standard marginalization freeze them into a linear factor. Enabled by
-   * default; only affects factors implementing FixableFactor. See
-   * doc/SmartFactorFixPose.md. */
+  /** Fix (condition) poses of FixableFactor factors at marginalization instead
+   * of freezing them into linear factors. Default on; only affects
+   * FixableFactor instances. See doc/SmartFactorFixPose.md. */
   void setFixSmartFactorsOnMarginalize(bool enable) {
     fixSmartFactorsOnMarginalize_ = enable;
   }
@@ -146,15 +144,12 @@ protected:
   /** Store results of latest isam2 update */
   ISAM2Result isamResult_;
 
-  /** Whether to fix (condition) poses of FixableFactor factors at
-   * marginalization time rather than letting them collapse into linear
-   * factors. */
   bool fixSmartFactorsOnMarginalize_ = true;
 
-  /** Find FixableFactor factors already in iSAM2 that touch a marginalizable
-   * key and a surviving key, and build the replacement set: the indices of the
-   * factors to remove, and new factors with the marginalizable poses fixed at
-   * the current linearization point. */
+  /** For FixableFactor factors in iSAM2 straddling the marginalization
+   * boundary, append their indices to factorsToRemove and the fixed
+   * replacements to fixedFactors (anchored at the current linearization
+   * point). */
   void prepareFixedSmartFactors(const KeyVector& marginalizableKeys,
                                 FactorIndices* factorsToRemove,
                                 NonlinearFactorGraph* fixedFactors) const;

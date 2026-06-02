@@ -57,15 +57,11 @@ protected:
 
   std::shared_ptr<CALIBRATION> K_; ///< calibration object (one for all cameras)
 
-  /// @name Anchored (fixed) poses
-  /// Support for "fixing" a pose at a given value and baking its contribution
-  /// into the factor, so the factor depends on one fewer variable. This is the
-  /// `fixPose` capability needed to use smart factors with fixed-lag smoothers.
-  /// See doc/SmartFactorFixPose.md for the math.
+  /// @name Anchored (fixed) poses, see doc/SmartFactorFixPose.md
   /// @{
-  KeyVector fixedKeys_;  ///< original keys of the anchored poses (bookkeeping)
+  KeyVector fixedKeys_;  ///< original keys of the anchored poses
   std::vector<Pose3, Eigen::aligned_allocator<Pose3> >
-      fixedPoses_;         ///< anchored world_P_body values (the \hat{x})
+      fixedPoses_;         ///< anchored world_P_body values
   ZVector fixedMeasured_;  ///< measurements of the anchored views
   /// @}
 
@@ -148,13 +144,12 @@ public:
     if (!this->active(values)) return 0.0;
     if (fixedPoses_.empty())
       return this->totalReprojectionError(cameras(values));
-    // With anchored poses the landmark is triangulated from all (live +
-    // anchored) cameras, and the anchored views contribute to the residual.
+    // Triangulate from all (live + anchored) cameras; anchored views contribute.
     const typename Base::Cameras cameras = allCameras(values);
     const ZVector measured = allMeasured();
     this->result_ =
         gtsam::triangulateSafe(cameras, measured, this->params_.triangulation);
-    if (!this->result_) return 0.0;  // ZERO_ON_DEGENERACY
+    if (!this->result_) return 0.0;
     Vector e = cameras.reprojectionError(*this->result_, measured);
     this->noiseModel_->whitenInPlace(e);
     return 0.5 * e.dot(e);
@@ -191,11 +186,7 @@ public:
   /// Keys of the poses that have been fixed in this factor.
   const KeyVector& fixedKeys() const { return fixedKeys_; }
 
-  /**
-   * Build the cameras for the anchored poses, held at their fixed values.
-   * Mirrors cameras(), but uses the stored world_P_body values instead of
-   * looking them up in a Values.
-   */
+  /// Cameras for the anchored poses, built at their stored world_P_body values.
   typename Base::Cameras fixedCameras() const {
     typename Base::Cameras cameras;
     cameras.reserve(fixedPoses_.size());
@@ -211,12 +202,8 @@ public:
   /**
    * Fix the pose with the given key at the supplied value, returning a new
    * factor that no longer depends on that key. The view's measurement is
-   * retained (it still constrains the landmark and the surviving poses), but
-   * the pose is conditioned (held constant) instead of being a variable.
-   *
-   * This is the building block that lets a fixed-lag smoother stop depending on
-   * an out-of-window pose without discarding the landmark information of the
-   * remaining views. See doc/SmartFactorFixPose.md.
+   * retained (it still constrains the landmark and the surviving poses) but the
+   * pose is conditioned (held constant) instead of being a variable.
    *
    * @param key         the pose key to fix (must be one of this->keys())
    * @param world_P_body the value at which to anchor the pose
@@ -229,15 +216,14 @@ public:
           "SmartProjectionPoseFactor::fixPose: key is not used by this factor");
     const size_t idx = std::distance(this->keys_.begin(), it);
 
-    auto result = std::make_shared<This>(*this);
     // Move (key, measurement) from the live set into the anchored set.
+    auto result = std::make_shared<This>(*this);
     result->fixedKeys_.push_back(key);
     result->fixedPoses_.push_back(world_P_body);
     result->fixedMeasured_.push_back(this->measured_[idx]);
     result->keys_.erase(result->keys_.begin() + idx);
     result->measured_.erase(result->measured_.begin() + idx);
-    // Invalidate the cached triangulation (camera count changed).
-    result->cameraPosesTriangulation_.clear();
+    result->cameraPosesTriangulation_.clear();  // camera count changed
     return result;
   }
 
@@ -265,9 +251,7 @@ public:
 
   /// @}
 
-  /// linearize: when poses are anchored we always linearize to a Hessian (the
-  /// anchored contribution is only defined in that mode); otherwise defer to
-  /// the base class.
+  /// Anchored factors linearize to a Hessian; otherwise defer to the base.
   std::shared_ptr<GaussianFactor> linearize(
       const Values& values) const override {
     if (fixedPoses_.empty()) return Base::linearize(values);
@@ -286,16 +270,15 @@ public:
     const size_t nrLive = this->keys_.size();
     const size_t m = nrLive + fixedPoses_.size();
 
-    // Live cameras first, then anchored cameras (so the live blocks form a
-    // prefix of the Schur-complement matrix). Measurements are kept aligned.
+    // Live cameras first, then anchored cameras, so the live blocks form a
+    // prefix of the Schur-complement matrix (see SelectLiveBlocks).
     typename Base::Cameras cameras = allCameras(values);
     const ZVector measured = allMeasured();
 
     this->result_ =
         gtsam::triangulateSafe(cameras, measured, this->params_.triangulation);
 
-    if (!this->result_) {
-      // Degenerate: return an empty (zero) Hessian over the live keys.
+    if (!this->result_) {  // degenerate: zero Hessian over the live keys
       std::vector<Matrix> Gs(nrLive * (nrLive + 1) / 2,
                              Matrix::Zero(Base::Dim, Base::Dim));
       std::vector<Vector> gs(nrLive, Vector::Zero(Base::Dim));
@@ -303,13 +286,10 @@ public:
                                                                 gs, 0.0);
     }
 
-    // Jacobians over all cameras at the triangulated point.
     typename Base::FBlocks Fs;
     Matrix E;
     Vector b;
     computeJacobiansFixed(Fs, E, b, cameras, measured);
-
-    // Whiten F, E, b with the (isotropic) noise model.
     this->whitenJacobians(Fs, E, b);
 
     // Schur-complement the landmark over all m cameras, then drop the anchored
@@ -343,17 +323,14 @@ public:
   }
 
   /**
-   * Compute the reprojection Jacobians (F per camera, E wrt the point) and the
-   * error vector b for all cameras at the triangulated point. Equivalent to the
-   * base-class computation but operates on an explicit measurement vector so
-   * the anchored views can be included.
+   * Like the base-class Jacobian computation, but takes an explicit measurement
+   * vector so the anchored views can be included alongside the live ones.
    */
   void computeJacobiansFixed(typename Base::FBlocks& Fs, Matrix& E, Vector& b,
                              const typename Base::Cameras& cameras,
                              const ZVector& measured) const {
     b = -cameras.reprojectionError(*this->result_, measured, Fs, E);
-    // Chain rule to express the Jacobians wrt the body pose if a sensor offset
-    // is used (matches SmartFactorBase::unwhitenedError).
+    // Chain rule to the body pose for a sensor offset (cf. unwhitenedError).
     if (Base::body_P_sensor_) {
       const Pose3 sensor_P_body = Base::body_P_sensor_->inverse();
       for (size_t i = 0; i < Fs.size(); i++) {
@@ -366,11 +343,9 @@ public:
   }
 
   /**
-   * Extract the augmented Hessian over the live poses from the full augmented
-   * Hessian over all poses. The live poses occupy the first nrLive blocks and
-   * the information vector / scalar is in the last (m-th) block; the anchored
-   * blocks in between are dropped. This realizes the conditioning derived in
-   * doc/SmartFactorFixPose.md.
+   * Keep the first nrLive pose blocks and the trailing info block of the full
+   * augmented Hessian, dropping the anchored blocks in between. This is the
+   * conditioning step derived in doc/SmartFactorFixPose.md.
    */
   static SymmetricBlockMatrix SelectLiveBlocks(
       const SymmetricBlockMatrix& full, size_t nrLive, size_t m) {
@@ -382,11 +357,9 @@ public:
       reduced.setDiagonalBlock(i, full.block(i, i));
       for (size_t j = i + 1; j < nrLive; j++)
         reduced.setOffDiagonalBlock(i, j, full.block(i, j));
-      // Information vector block (last column).
-      reduced.setOffDiagonalBlock(i, nrLive, full.block(i, m));
+      reduced.setOffDiagonalBlock(i, nrLive, full.block(i, m));  // info vector
     }
-    // Constant term f (bottom-right scalar) is retained unchanged.
-    reduced.setDiagonalBlock(nrLive, full.block(m, m));
+    reduced.setDiagonalBlock(nrLive, full.block(m, m));  // constant term f
     return reduced;
   }
 

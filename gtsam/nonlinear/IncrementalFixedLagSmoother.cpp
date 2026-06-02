@@ -78,11 +78,9 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     std::cout << std::endl;
   }
 
-  // Before marginalizing, give FixableFactor factors (e.g.
-  // SmartProjectionPoseFactor) already in iSAM2 a chance to fix the retiring
-  // poses at their current estimate, so the surviving views are not lost when
-  // the pose is marginalized. We do this as a remove+add inside the iSAM2
-  // update below. See doc/SmartFactorFixPose.md.
+  // Fix retiring poses in FixableFactor factors as a remove+add in the iSAM2
+  // update below, so the surviving views are not lost when the pose is
+  // marginalized. See doc/SmartFactorFixPose.md.
   NonlinearFactorGraph factorsToAdd(newFactors);
   FactorIndices allFactorsToRemove(factorsToRemove);
   if (fixSmartFactorsOnMarginalize_ && !marginalizableKeys.empty()) {
@@ -183,8 +181,7 @@ void IncrementalFixedLagSmoother::prepareFixedSmartFactors(
     NonlinearFactorGraph* fixedFactors) const {
   const KeySet marginalized(marginalizableKeys.begin(),
                             marginalizableKeys.end());
-  // Anchor poses at the current linearization point, which is also what the
-  // marginalization linearizes about (a first-estimate-like choice).
+  // Anchor at the point iSAM2 marginalizes about, so factor and marginal agree.
   const Values& linearizationPoint = isam_.getLinearizationPoint();
   const NonlinearFactorGraph& factors = isam_.getFactorsUnsafe();
 
