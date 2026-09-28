@@ -182,8 +182,17 @@ protected:
   /** A cross-reference structure to allow efficient factor lookups by key **/
   FactorIndex factorIndex_;
 
-  /** Augment the list of factors with a set of new factors */
-  void insertFactors(const NonlinearFactorGraph& newFactors);
+  /** Augment the list of factors with a set of new factors, return the slots */
+  FactorIndices insertFactors(const NonlinearFactorGraph& newFactors);
+
+  /**
+   * Replace in place every factor on marginalizableKeys that supports
+   * NonlinearFactor::conditionOn by its copy conditioned on the current
+   * estimate, and erase the keys left without factors. Returns the replaced
+   * slots that are not in newFactorsIndices.
+   */
+  FactorIndices conditionFactorsOnKeys(KeyVector* marginalizableKeys,
+                                       const FactorIndices& newFactorsIndices);
 
   /** Remove factors from the list of factors by slot index */
   void removeFactors(const std::set<size_t>& deleteFactors);

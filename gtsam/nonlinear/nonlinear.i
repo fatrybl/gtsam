@@ -147,6 +147,7 @@ virtual class NonlinearFactor : gtsam::Factor {
   gtsam::GaussianFactor* linearize(const gtsam::Values& c) const;
   gtsam::NonlinearFactor* clone() const;
   gtsam::NonlinearFactor* rekey(const gtsam::KeyVector& newKeys) const;
+  gtsam::NonlinearFactor* conditionOn(const gtsam::Values& fixedValues) const;
 };
 
 #include <gtsam/nonlinear/NonlinearFactor.h>
@@ -984,10 +985,14 @@ class FixedLagSmootherResult {
   gtsam::FactorIndices getDeletedFactorIndices() const;
   gtsam::KeySet getKeysOfDeletedNodes() const;
   gtsam::KeySet getExpiredPendingKeys() const;
+  gtsam::FactorIndices getNewFactorsIndices() const;
+  gtsam::FactorIndices getConditionedFactorIndices() const;
   void print() const;
 };
 
 virtual class FixedLagSmoother {
+  enum MarginalizationMode { MARGINALIZE, CONDITION };
+
   void print(
       const string& s = "FixedLagSmoother:\n",
       const gtsam::KeyFormatter& keyFormatter = gtsam::DefaultKeyFormatter)
@@ -997,6 +1002,9 @@ virtual class FixedLagSmoother {
   const gtsam::FixedLagSmootherKeyTimestampMap& timestamps() const;
   double smootherLag() const;
   void setSmootherLag(double smootherLag);
+  gtsam::FixedLagSmoother::MarginalizationMode marginalizationMode() const;
+  void setMarginalizationMode(
+      gtsam::FixedLagSmoother::MarginalizationMode marginalizationMode);
 
   gtsam::FixedLagSmootherResult update(
       const gtsam::NonlinearFactorGraph& newFactors =

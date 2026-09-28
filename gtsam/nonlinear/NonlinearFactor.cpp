@@ -79,6 +79,12 @@ NonlinearFactor::shared_ptr NonlinearFactor::rekey(
 }
 
 /* ************************************************************************* */
+NonlinearFactor::shared_ptr NonlinearFactor::conditionOn(
+    const Values& fixedValues) const {
+  return nullptr;
+}
+
+/* ************************************************************************* */
 void NoiseModelFactor::print(const std::string& s,
     const KeyFormatter& keyFormatter) const {
   Base::print(s, keyFormatter);

@@ -49,10 +49,15 @@ public:
     JacobianFactor::fillTerms(QF, zeroVector, model);
   }
 
-  /// Constructor
+  /**
+   * Constructor. F block k multiplies row block rowBlocks[k] of E and b, or
+   * row block k if rowBlocks is empty; rows without an F block belong to
+   * fixed cameras.
+   */
   JacobianFactorQ(const KeyVector& keys,
       const std::vector<MatrixZD, Eigen::aligned_allocator<MatrixZD> >& FBlocks, const Matrix& E, const Matrix3& P,
-      const Vector& b, const SharedDiagonal& model = SharedDiagonal()) :
+      const Vector& b, const SharedDiagonal& model = SharedDiagonal(),
+      const FastVector<size_t>& rowBlocks = FastVector<size_t>()) :
       Base() {
     size_t j = 0, m2 = E.rows(), m = m2 / ZDim;
     // Calculate projector Q
@@ -64,6 +69,7 @@ public:
     // Below, we compute each mZDim*D block A_j = Q_j * F_j = (mZDim*ZDim) * (Zdim*D)
     for (size_t k = 0; k < FBlocks.size(); ++k) {
       Key key = keys[k];
+      if (!rowBlocks.empty()) j = rowBlocks[k];
       QF.push_back(
           KeyMatrix(key, - Q.block(0, ZDim * j++, m2, ZDim) * FBlocks[k]));
     }

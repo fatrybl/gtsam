@@ -165,6 +165,17 @@ protected:
   /** Erase any keys associated with timestamps before the provided time */
   void eraseKeysBefore(double timestamp);
 
+  /**
+   * Replace every factor on the marginalizable keys that already have an
+   * estimate, and that supports NonlinearFactor::conditionOn, by its copy
+   * conditioned on the estimate of the last update: new factors in place in
+   * factorsToAdd, existing ones through slotsToRemove and factorsToAdd.
+   * Returns the slots of the replaced existing factors.
+   */
+  FactorIndices conditionFactorsOnKeys(const KeyVector& marginalizableKeys,
+                                       NonlinearFactorGraph* factorsToAdd,
+                                       FactorIndices* slotsToRemove) const;
+
   /** Fill in an iSAM2 ConstrainedKeys structure such that the provided keys are eliminated before all others */
   void createOrderingConstraints(
       const KeyVector& marginalizableKeys,
