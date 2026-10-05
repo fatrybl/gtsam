@@ -5,7 +5,7 @@ When a pose observed by a smart factor leaves the window of a `gtsam.BatchFixedL
 *   `MARGINALIZE` (default) marginalizes the pose out of all of them. This is exact, but it consumes the smart factor into a dense linear marginal over the other poses of its track, and the landmark receives no further measurements.
 *   `CONDITION` first replaces every factor that supports `NonlinearFactor::conditionOn` by a copy in which the pose is held constant at its current estimate, and then marginalizes the remaining factors. A smart factor keeps the measurement of such a *fixed camera* for triangulation and for the landmark information, but the camera has no key and no Jacobian block.
 
-The notation is that of [SmartFactors.md](SmartFactors.md). Runnable examples are `examples/FixedLagSmootherExample_SmartFactor.cpp` and `python/gtsam/examples/FixedLagSmootherExample_SmartFactor.py`.
+The notation is that of [SmartFactors.md](SmartFactors.md). Runnable examples, each as a C++ program in `examples/` and a notebook in `python/gtsam/examples/nonlinear/`: `VisualFixedLagSmootherExample_SmartFactor` runs both smoothers in both modes on the visual odometry dataset of `StereoVOExample_large`, and `FixedLagSmootherExample_SmartFactor` compares the modes with the full batch solution on a simulated loop whose tracks start and end at random.
 
 ## Marginalization
 
